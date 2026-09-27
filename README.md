@@ -68,7 +68,7 @@ Anahtar `~/.config/akreddit/anahtar` dosyasında yalnız sizin okuyabileceğiniz
 
 ### Çalıştırma
 
-`akreddit ajan` önce ne bildiğini özetler, yalnız eksik olanı sorar. Her soruda önerilen bir seçenek ve kendi cevabını yazma imkânı vardır.
+`akreddit ajan` önce ne bildiğini özetler, yalnız eksik olanı sorar. Çalışma klasörleri Belgeler/Akreddit altında, program adıyla açılır. Sonraki seferlerde ajan bu klasörleri kendisi bulur ve kaldığı yerden devam etmeyi önerir. Her soruda önerilen bir seçenek ve kendi cevabını yazma imkânı vardır.
 
 Ajan PDF (sayfa numaralarıyla) ve Word belgelerini doğrudan okur. Taranmış, metin içermeyen PDF'ler için metin içeren bir sürüm gerekir.
 

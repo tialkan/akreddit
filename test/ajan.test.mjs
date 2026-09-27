@@ -34,7 +34,7 @@ const cagri = (id, ad, arg) => ({ id, type: "function", function: { name: ad, ar
 function ajan(args, cwd = EV) {
   return new Promise((r) => execFile(process.execPath, [ARAC, "ajan", ...args], {
     cwd,
-    env: { ...process.env, XDG_CONFIG_HOME: EV, AKREDDIT_API_ADRESI: ADRES, AKREDDIT_MODEL: "deneme", AKREDDIT_API_ANAHTARI: "gizli-anahtar" },
+    env: { ...process.env, XDG_CONFIG_HOME: EV, AKREDDIT_CALISMA_KOKU: EV, AKREDDIT_API_ADRESI: ADRES, AKREDDIT_MODEL: "deneme", AKREDDIT_API_ANAHTARI: "gizli-anahtar" },
   }, (hata, stdout, stderr) => r({ kod: hata ? hata.code : 0, cikti: stdout, gunluk: stderr })));
 }
 
@@ -92,4 +92,20 @@ test("ajan klasör dışına çıkamaz, kanıtlara yazamaz, onay veremez", async
   assert.match(yanit("4"), /çalıştırılamaz/);
   assert.match(yanit("5"), /Önerilen/);
   assert.equal(existsSync(join(KLASOR, "kanitlar", "sahte.pdf")), false);
+});
+
+test("ajan var olan çalışma klasörlerini bilir ve klasor_ac ile geçer", async () => {
+  senaryo = [
+    { cagrilar: [cagri("1", "klasor_ac", { yol: KLASOR }), cagri("2", "klasor_ac", { yol: EV })] },
+    { cagrilar: [cagri("3", "komut_calistir", { argumanlar: ["ozet"] })] },
+    { content: "Devam ediyoruz." },
+  ];
+  istekler.length = 0;
+  const r = await ajan(["--tek", "devam"], EV);
+  assert.equal(r.kod, 0, r.gunluk);
+  assert.match(istekler[0].veri.messages[0].content, new RegExp(`- program: ${KLASOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  const yanit = (i, id) => istekler[i].veri.messages.find((m) => m.tool_call_id === id).content;
+  assert.match(yanit(1, "1"), /Çalışma klasörü/);
+  assert.match(yanit(1, "2"), /çalışma klasörü değil/);
+  assert.match(yanit(2, "3"), /Kanıt: 0 dosya/);
 });
