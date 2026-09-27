@@ -6,8 +6,9 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ARAC = new URL("../bin/akreddit", import.meta.url).pathname;
+const ARAC = fileURLToPath(new URL("../bin/akreddit", import.meta.url));
 const EV = mkdtempSync(join(tmpdir(), "akreddit-ajan-"));
 const KLASOR = join(EV, "program");
 

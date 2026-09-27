@@ -30,43 +30,49 @@ Bu kurallar yapay zekâya yalnız söylenmez, kodla uygulanır. Ayrıntı: [`lib
 
 ## Kurulum
 
-Node.js 22.13 ya da üstü gerekir. Başka bağımlılık yoktur.
+Adım adım, ekran ekran anlatım: **[tezatlas.com/akreddit/kurulum](https://tezatlas.com/akreddit/kurulum)**. Teknik bilgi gerektirmez.
+
+Kısaca:
+
+1. [nodejs.org](https://nodejs.org) adresinden Node.js'in LTS sürümünü kurun (22.13 ya da üstü).
+2. Terminali açın (Windows'ta **Komut İstemi**) ve Akreddit'i kurun:
 
 ```bash
-npm install -g github:tialkan/akreddit
+npm install -g https://github.com/tialkan/akreddit/archive/refs/heads/main.tar.gz
 ```
 
-### Model seçimi
-
-Akreddit, `/chat/completions` uç noktası sunan her sunucuyla çalışır. Araç kullanımını (tool calling) destekleyen bir model seçin.
-
-Kurumun kendi sunucusu (örneğin vLLM):
+3. Yapay zekâ modelini seçin. Sihirbaz her adımı sorar, Enter önerileni seçer:
 
 ```bash
-akreddit model --hazir vllm --model <model-adı>
+akreddit kurulum
 ```
 
-Aynı bilgisayarda Ollama:
-
-```bash
-akreddit model --hazir ollama --model <model-adı>
-```
-
-Başka bir OpenAI uyumlu hizmet:
-
-```bash
-akreddit model --adres https://sunucu.ornek.gov.tr/v1 --model <model-adı>
-```
-
-Anahtar gerekiyorsa `AKREDDIT_API_ANAHTARI` ortam değişkenine yazılır. Anahtar dosyaya kaydedilmez. Ayarı sınamak için `akreddit model --dene`.
-
-### Çalıştırma
+4. Çalışmaya başlayın:
 
 ```bash
 akreddit ajan
 ```
 
-Ajan önce ne bildiğini özetler, yalnız eksik olanı sorar. Her soruda önerilen bir seçenek ve kendi cevabını yazma imkânı vardır. Gözetimsiz çalıştırmak için:
+### Model seçenekleri
+
+Akreddit, `/chat/completions` uç noktası sunan her sunucuyla çalışır. Araç kullanımını (tool calling) destekleyen bir model seçin.
+
+| Seçenek | Ne zaman | Ayar |
+|---|---|---|
+| **EVREN** | Pilot ve bireysel kullanım. Yurt içi kamu altyapısı, anahtar e-Devlet girişiyle alınır. | `akreddit kurulum` → A |
+| **Kurumun kendi sunucusu** | Kurumsal kullanım. Veri kurumdan çıkmaz. | `akreddit model --hazir vllm --model <ad>` |
+| **Ollama** | Güçlü bir bilgisayarda, internetsiz deneme. | `akreddit model --hazir ollama --model <ad>` |
+| **Başka bir uyumlu hizmet** | | `akreddit model --adres https://…/v1 --model <ad>` |
+
+Anahtar `~/.config/akreddit/anahtar` dosyasında yalnız sizin okuyabileceğiniz biçimde saklanır. İsterseniz `AKREDDIT_API_ANAHTARI` ortam değişkeni de kullanılabilir. Ayarı sınamak için `akreddit model --dene`.
+
+### Çalıştırma
+
+`akreddit ajan` önce ne bildiğini özetler, yalnız eksik olanı sorar. Her soruda önerilen bir seçenek ve kendi cevabını yazma imkânı vardır.
+
+Ajan PDF (sayfa numaralarıyla) ve Word belgelerini doğrudan okur. Taranmış, metin içermeyen PDF'ler için metin içeren bir sürüm gerekir.
+
+Gözetimsiz çalıştırmak için:
 
 ```bash
 akreddit ajan --tek "Programın Bologna paketini al ve denetle: https://obs.uni.edu.tr/oibs/bologna/..."

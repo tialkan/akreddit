@@ -1,14 +1,37 @@
 {
   "name": "akreddit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Kalite komisyonları için akreditasyon hazırlığını kaynaklı, kayıtlı ve onaylı yürüten açık kaynak iş akışı.",
   "license": "Apache-2.0",
   "author": "Tarık İsmet ALKAN (https://kulular.com.tr)",
   "homepage": "https://github.com/tialkan/akreddit",
-  "repository": { "type": "git", "url": "git+https://github.com/tialkan/akreddit.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tialkan/akreddit.git"
+  },
   "type": "module",
-  "bin": { "akreddit": "bin/akreddit" },
-  "engines": { "node": ">=22.13" },
-  "scripts": { "test": "node --test" },
-  "files": ["bin", "lib", "skills", "bilgi", "hooks", "scripts", ".claude-plugin", ".mcp.json", "LICENSE", "NOTICE"]
+  "bin": {
+    "akreddit": "bin/akreddit"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "skills",
+    "bilgi",
+    "hooks",
+    "scripts",
+    ".claude-plugin",
+    ".mcp.json",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "unpdf": "^1.8.1"
+  }
 }

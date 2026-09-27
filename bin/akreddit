@@ -750,6 +750,7 @@ async function bolognaTaslakDenetle(s) {
 
 const YARDIM = `Akreddit
 
+  kurulum                   Yapay zekâ modelini adım adım ayarlar (ilk iş bunu çalıştır)
   ajan [görev]              Yapay zekâ ajanını seçtiğin modelle başlatır
   model [--adres URL --model ad --anahtar-degiskeni AD]  Model ayarını gösterir ya da kaydeder
   kur [klasor]              Çalışma klasörü oluşturur
@@ -779,6 +780,7 @@ const YARDIM = `Akreddit
 const [komut, ...geri] = process.argv.slice(2);
 const s = secenekler(geri);
 const KOMUTLAR = {
+  kurulum: async () => (await import(new URL("../lib/kurulum.mjs", import.meta.url).href)).kurulumSihirbazi(),
   ajan: async (s) => (await import(new URL("../lib/ajan.mjs", import.meta.url).href)).ajanBaslat(s),
   model: async (s) => (await import(new URL("../lib/model.mjs", import.meta.url).href)).modelKomutu(s),
   kur, "kanit-ekle": kanitEkle, adim, ozet: ozetGoster,

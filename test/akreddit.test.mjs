@@ -5,9 +5,10 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, statSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
-const ARAC = new URL("../bin/akreddit", import.meta.url).pathname;
+const ARAC = fileURLToPath(new URL("../bin/akreddit", import.meta.url));
 
 const EV = mkdtempSync(join(tmpdir(), "akreddit-ev-"));
 
@@ -102,7 +103,7 @@ test("Faz 3 klasörü yeni şemaya geçer", async () => {
 test("Faz 5: yazma planı ve tarayıcı koruması", async () => {
   const k = join(EV, "program");
   const c = (...a) => calistir(a, k);
-  const kancaYolu = new URL("../scripts/koruma.mjs", import.meta.url).pathname;
+  const kancaYolu = fileURLToPath(new URL("../scripts/koruma.mjs", import.meta.url));
   const kanca = (arac, girdi = {}, mod = "default") => new Promise((r) => {
     const p = execFile(process.execPath, [kancaYolu], (h, out) => {
       const karar = out ? JSON.parse(out).hookSpecificOutput : null;
