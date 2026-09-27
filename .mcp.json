@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tarayici": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--isolated"]
+    }
+  }
+}

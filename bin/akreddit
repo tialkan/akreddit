@@ -1,0 +1,793 @@
+#!/usr/bin/env node
+// Akreddit komut satırı aracı. Bağımlılık yok, Node 22.13+ ister (node:sqlite).
+// Ajan (akreddit ajan) ve Claude Code eklentisi bu aracı çağırır; elle de kullanılabilir.
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+
+const [ana, ara] = process.versions.node.split(".").map(Number);
+if (ana < 22 || (ana === 22 && ara < 13)) {
+  process.stderr.write(`Akreddit Node.js 22.13 ya da üstünü ister. Bu bilgisayarda ${process.versions.node} var. https://nodejs.org adresinden güncel LTS sürümünü kur.\n`);
+  process.exit(1);
+}
+const { DatabaseSync } = await import("node:sqlite");
+
+const CIKIS = { tamam: 0, hata: 1 };
+
+function yaz(metin) { process.stdout.write(`${metin}\n`); }
+function hata(metin, kod = CIKIS.hata) { process.stderr.write(`${metin}\n`); process.exit(kod); }
+
+function secenekler(argv) {
+  const s = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i].startsWith("--")) {
+      const ad = argv[i].slice(2);
+      s[ad] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
+    } else s._.push(argv[i]);
+  }
+  return s;
+}
+
+// ---------- Çalışma klasörü ----------
+
+const YEREL_GOCLER = [
+  `
+  CREATE TABLE kanitlar (
+    id INTEGER PRIMARY KEY,
+    ozet TEXT NOT NULL UNIQUE CHECK (length(ozet) = 64),
+    ozgun_ad TEXT NOT NULL,
+    yol TEXT NOT NULL UNIQUE,
+    boyut INTEGER NOT NULL CHECK (boyut >= 0),
+    eklenme TEXT NOT NULL
+  ) STRICT;
+  CREATE TABLE adimlar (
+    id INTEGER PRIMARY KEY,
+    zaman TEXT NOT NULL,
+    eylem TEXT NOT NULL,
+    adres TEXT,
+    ayrinti TEXT,
+    ekran TEXT,
+    onaylayan TEXT
+  ) STRICT;
+  CREATE TRIGGER adim_degismez BEFORE UPDATE ON adimlar BEGIN SELECT RAISE(ABORT, 'Adım kaydı değiştirilemez.'); END;
+  CREATE TRIGGER adim_silinmez BEFORE DELETE ON adimlar BEGIN SELECT RAISE(ABORT, 'Adım kaydı silinemez.'); END;
+  `,
+  `
+  CREATE TABLE ciktilar (
+    id INTEGER PRIMARY KEY,
+    tur TEXT NOT NULL CHECK (tur IN ('program', 'ders')),
+    ders TEXT NOT NULL DEFAULT '',
+    kod TEXT NOT NULL CHECK (length(kod) BETWEEN 1 AND 40),
+    metin TEXT NOT NULL CHECK (length(metin) >= 5),
+    kanit_id INTEGER REFERENCES kanitlar(id),
+    eklenme TEXT NOT NULL,
+    UNIQUE (tur, ders, kod),
+    CHECK ((tur = 'program' AND ders = '') OR (tur = 'ders' AND ders <> ''))
+  ) STRICT;
+  CREATE TRIGGER cikti_degismez BEFORE UPDATE ON ciktilar BEGIN SELECT RAISE(ABORT, 'Çıktı metni değiştirilemez. Yeni sürümü yeni kodla ekle.'); END;
+
+  CREATE TABLE oneriler (
+    id INTEGER PRIMARY KEY,
+    tur TEXT NOT NULL CHECK (tur IN ('etiket', 'matris')),
+    hedef TEXT NOT NULL,
+    iliski TEXT CHECK (iliski IN ('puan', 'iliskisiz', 'yetersiz_kanit')),
+    puan INTEGER CHECK (puan BETWEEN 1 AND 5),
+    deger TEXT,
+    gerekce TEXT NOT NULL CHECK (length(gerekce) >= 10),
+    kanit_id INTEGER REFERENCES kanitlar(id),
+    konum TEXT,
+    inceleme TEXT,
+    karar TEXT NOT NULL DEFAULT 'bekliyor' CHECK (karar IN ('bekliyor', 'onaylandi', 'duzeltildi', 'reddedildi')),
+    son_iliski TEXT CHECK (son_iliski IN ('puan', 'iliskisiz', 'yetersiz_kanit')),
+    son_puan INTEGER CHECK (son_puan BETWEEN 1 AND 5),
+    son_deger TEXT,
+    karar_veren TEXT,
+    karar_zamani TEXT,
+    olusturma TEXT NOT NULL,
+    CHECK (tur <> 'matris' OR (iliski IS NOT NULL AND ((iliski = 'puan') = (puan IS NOT NULL)))),
+    CHECK (tur <> 'etiket' OR (deger IS NOT NULL AND kanit_id IS NOT NULL)),
+    CHECK (karar = 'bekliyor' OR (karar_veren IS NOT NULL AND karar_zamani IS NOT NULL))
+  ) STRICT;
+  CREATE TRIGGER oneri_bir_kez_karar BEFORE UPDATE ON oneriler WHEN OLD.karar <> 'bekliyor'
+  BEGIN SELECT RAISE(ABORT, 'Karar verilmiş öneri değiştirilemez. Yeni öneri aç.'); END;
+  CREATE TRIGGER oneri_silinmez BEFORE DELETE ON oneriler BEGIN SELECT RAISE(ABORT, 'Öneri silinemez.'); END;
+  CREATE TRIGGER kanit_silinmez BEFORE DELETE ON kanitlar BEGIN SELECT RAISE(ABORT, 'Kanıt kaydı silinemez.'); END;
+  `,
+  `
+  CREATE TABLE yazma_planlari (
+    id INTEGER PRIMARY KEY,
+    sistem TEXT NOT NULL,
+    adres TEXT NOT NULL,
+    alanlar TEXT NOT NULL CHECK (json_valid(alanlar) AND json_array_length(alanlar) BETWEEN 1 AND 60),
+    durum TEXT NOT NULL DEFAULT 'bekliyor' CHECK (durum IN ('bekliyor', 'onaylandi', 'tamamlandi', 'iptal')),
+    onaylayan TEXT,
+    onay_zamani TEXT,
+    son_kullanma TEXT,
+    sonuc TEXT,
+    olusturma TEXT NOT NULL,
+    CHECK (durum = 'bekliyor' OR durum = 'iptal' OR (onaylayan IS NOT NULL AND onay_zamani IS NOT NULL))
+  ) STRICT;
+  CREATE TRIGGER plan_gecisi BEFORE UPDATE ON yazma_planlari
+  WHEN NOT ((OLD.durum = 'bekliyor' AND NEW.durum IN ('onaylandi', 'iptal'))
+         OR (OLD.durum = 'onaylandi' AND NEW.durum IN ('tamamlandi', 'iptal')))
+    OR NEW.alanlar <> OLD.alanlar OR NEW.adres <> OLD.adres
+  BEGIN SELECT RAISE(ABORT, 'Yazma planı bu şekilde değiştirilemez. Yeni plan aç.'); END;
+  CREATE TRIGGER plan_silinmez BEFORE DELETE ON yazma_planlari BEGIN SELECT RAISE(ABORT, 'Yazma planı silinemez.'); END;
+  `,
+  `
+  CREATE TABLE bologna_aktarimlari (
+    id INTEGER PRIMARY KEY,
+    zaman TEXT NOT NULL,
+    adres TEXT NOT NULL,
+    kanit_id INTEGER NOT NULL REFERENCES kanitlar(id),
+    ders_sayisi INTEGER NOT NULL
+  ) STRICT;
+  CREATE TRIGGER aktarim_degismez BEFORE UPDATE ON bologna_aktarimlari BEGIN SELECT RAISE(ABORT, 'Aktarım kaydı değiştirilemez.'); END;
+  `,
+  // 5: Bir ders sayfasının tamamı tek planda yazılabilsin diye 60 alan sınırı kalkar (üst sınır araçta 400).
+  `
+  CREATE TABLE yazma_planlari_yeni (
+    id INTEGER PRIMARY KEY,
+    sistem TEXT NOT NULL,
+    adres TEXT NOT NULL,
+    alanlar TEXT NOT NULL CHECK (json_valid(alanlar) AND json_array_length(alanlar) >= 1),
+    durum TEXT NOT NULL DEFAULT 'bekliyor' CHECK (durum IN ('bekliyor', 'onaylandi', 'tamamlandi', 'iptal')),
+    onaylayan TEXT,
+    onay_zamani TEXT,
+    son_kullanma TEXT,
+    sonuc TEXT,
+    olusturma TEXT NOT NULL,
+    CHECK (durum = 'bekliyor' OR durum = 'iptal' OR (onaylayan IS NOT NULL AND onay_zamani IS NOT NULL))
+  ) STRICT;
+  INSERT INTO yazma_planlari_yeni SELECT * FROM yazma_planlari;
+  DROP TABLE yazma_planlari;
+  ALTER TABLE yazma_planlari_yeni RENAME TO yazma_planlari;
+  CREATE TRIGGER plan_gecisi BEFORE UPDATE ON yazma_planlari
+  WHEN NOT ((OLD.durum = 'bekliyor' AND NEW.durum IN ('onaylandi', 'iptal'))
+         OR (OLD.durum = 'onaylandi' AND NEW.durum IN ('tamamlandi', 'iptal')))
+    OR NEW.alanlar <> OLD.alanlar OR NEW.adres <> OLD.adres
+  BEGIN SELECT RAISE(ABORT, 'Yazma planı bu şekilde değiştirilemez. Yeni plan aç.'); END;
+  CREATE TRIGGER plan_silinmez BEFORE DELETE ON yazma_planlari BEGIN SELECT RAISE(ABORT, 'Yazma planı silinemez.'); END;
+  `,
+];
+
+function klasorBul(baslangic = process.cwd()) {
+  let k = resolve(baslangic);
+  while (true) {
+    if (existsSync(join(k, "AKREDDIT.md")) && existsSync(join(k, "kayit"))) return k;
+    const ust = dirname(k);
+    if (ust === k) return null;
+    k = ust;
+  }
+}
+
+function yerelVt(klasor) {
+  const vt = new DatabaseSync(join(klasor, "kayit", "akreddit.sqlite"));
+  vt.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+  let surum = vt.prepare("PRAGMA user_version").get().user_version;
+  // Faz 3 klasörleri şemayı sürümsüz kurmuştu; tablo varsa ilk göç uygulanmış sayılır.
+  if (surum === 0 && vt.prepare("SELECT 1 FROM sqlite_master WHERE name = 'kanitlar'").get()) surum = 1;
+  for (let i = surum; i < YEREL_GOCLER.length; i++) {
+    vt.exec("BEGIN IMMEDIATE");
+    try {
+      vt.exec(YEREL_GOCLER[i]);
+      vt.exec(`PRAGMA user_version = ${i + 1}`);
+      vt.exec("COMMIT");
+    } catch (e) { vt.exec("ROLLBACK"); throw e; }
+  }
+  return vt;
+}
+
+function adimKaydet(klasor, a) {
+  const kayit = { zaman: new Date().toISOString(), eylem: a.eylem, adres: a.adres ?? null, ayrinti: a.ayrinti ?? null, ekran: a.ekran ?? null, onaylayan: a.onaylayan ?? null };
+  const vt = yerelVt(klasor);
+  vt.prepare("INSERT INTO adimlar (zaman, eylem, adres, ayrinti, ekran, onaylayan) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(kayit.zaman, kayit.eylem, kayit.adres, kayit.ayrinti, kayit.ekran, kayit.onaylayan);
+  vt.close();
+  appendFileSync(join(klasor, "gunluk", `${kayit.zaman.slice(0, 10)}.jsonl`), `${JSON.stringify(kayit)}\n`);
+}
+
+const KLASOR_BENIOKU = `# Akreddit çalışma klasörü
+
+Bu klasör bir programın akreditasyon hazırlığını tutar. Bu klasörde \`akreddit ajan\` çalıştır ya da Claude Code'u açıp \`/akreddit:baslat\` yaz.
+
+- \`kanitlar/\`: özgün dosyalar. Adı içeriğin SHA-256 özetiyle başlar, üzerine yazılmaz.
+- \`kayit/akreddit.sqlite\`: kanıt listesi ve adım günlüğü.
+- \`gunluk/\`: her günün adımları (JSONL) ve ekran görüntüleri.
+- \`raporlar/\`: kaynaklı taslaklar.
+- \`tarayici/\`: tarayıcı profili. Git'e girmez, iş bitince silinebilir.
+
+Kurallar: kanıtı olmayan iddia yazılmaz. Kurum sistemlerine parolayı sen girersin.
+Dış kuruma giden son gönderim her zaman sende.
+`;
+
+async function kur(s) {
+  const klasor = resolve(s._[0] || ".");
+  for (const alt of ["kanitlar", "kayit", "gunluk", "raporlar", "tarayici"]) mkdirSync(join(klasor, alt), { recursive: true });
+  if (!existsSync(join(klasor, "AKREDDIT.md"))) writeFileSync(join(klasor, "AKREDDIT.md"), KLASOR_BENIOKU);
+  const gi = join(klasor, ".gitignore");
+  if (!existsSync(gi)) writeFileSync(gi, "tarayici/\nkayit/*.sqlite-wal\nkayit/*.sqlite-shm\n.DS_Store\n");
+  yerelVt(klasor).close();
+  if (!existsSync(join(klasor, ".git"))) {
+    try { execFileSync("git", ["init", "-q"], { cwd: klasor }); } catch { yaz("Uyarı: git bulunamadı, sürüm geçmişi tutulmayacak."); }
+  }
+  adimKaydet(klasor, { eylem: "klasor_kuruldu" });
+  yaz(`Çalışma klasörü hazır: ${klasor}`);
+}
+
+function kanitEkle(s) {
+  const klasor = klasorBul();
+  if (!klasor) hata("Bir Akreddit çalışma klasöründe değilsin. Önce: kur <klasor>");
+  if (s._.length === 0) hata("Eklenecek dosyayı yaz: kanit-ekle <dosya> [dosya…]");
+  const vt = yerelVt(klasor);
+  for (const dosya of s._) {
+    if (!existsSync(dosya) || !statSync(dosya).isFile()) { yaz(`Atlandı (dosya yok): ${dosya}`); continue; }
+    const icerik = readFileSync(dosya);
+    const ozet = createHash("sha256").update(icerik).digest("hex");
+    const var_ = vt.prepare("SELECT yol FROM kanitlar WHERE ozet = ?").get(ozet);
+    if (var_) { yaz(`Zaten var: ${basename(dosya)} → ${var_.yol}`); continue; }
+    const temizAd = basename(dosya).replace(/[^\p{L}\p{N}._-]+/gu, "_").slice(-120);
+    const yol = join("kanitlar", `${ozet.slice(0, 16)}-${temizAd}`);
+    copyFileSync(dosya, join(klasor, yol));
+    chmodSync(join(klasor, yol), 0o444);
+    vt.prepare("INSERT INTO kanitlar (ozet, ozgun_ad, yol, boyut, eklenme) VALUES (?, ?, ?, ?, ?)")
+      .run(ozet, basename(dosya), yol, icerik.length, new Date().toISOString());
+    yaz(`Eklendi: ${basename(dosya)} → ${yol}`);
+  }
+  vt.close();
+  adimKaydet(klasor, { eylem: "kanit_eklendi", ayrinti: JSON.stringify({ dosyalar: s._.map((d) => basename(d)) }) });
+}
+
+function adim(s) {
+  const klasor = klasorBul();
+  if (!klasor) hata("Bir Akreddit çalışma klasöründe değilsin.");
+  if (!s._[0]) hata("Eylem adını yaz: adim <eylem> [--adres …] [--ayrinti …] [--ekran …] [--onaylayan …]");
+  adimKaydet(klasor, { eylem: s._[0], adres: s.adres, ayrinti: s.ayrinti, ekran: s.ekran, onaylayan: s.onaylayan });
+  yaz("Kaydedildi.");
+}
+
+function ozetGoster() {
+  const klasor = klasorBul();
+  if (!klasor) hata("Bir Akreddit çalışma klasöründe değilsin.");
+  const vt = yerelVt(klasor);
+  const kanit = vt.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(boyut), 0) AS b FROM kanitlar").get();
+  const son = vt.prepare("SELECT zaman, eylem, adres, ayrinti FROM adimlar ORDER BY id DESC LIMIT 15").all();
+  vt.close();
+  yaz(`Klasör: ${klasor}`);
+  yaz(`Kanıt: ${kanit.n} dosya, ${(kanit.b / 1048576).toFixed(1)} MB`);
+  yaz("Son adımlar (yeniden eskiye):");
+  for (const a of son) yaz(`  ${a.zaman.slice(0, 16).replace("T", " ")}  ${a.eylem}${a.adres ? `  ${a.adres}` : ""}${a.ayrinti ? `  ${a.ayrinti}` : ""}`);
+}
+
+
+// ---------- Faz 4: çıktılar, öneriler, kararlar, matris, rapor denetimi ----------
+
+function klasorVeVt() {
+  const klasor = klasorBul();
+  if (!klasor) hata("Bir Akreddit çalışma klasöründe değilsin. Önce: akreddit kur <klasor>");
+  return { klasor, vt: yerelVt(klasor) };
+}
+
+function kanitBul(vt, anahtar) {
+  if (!anahtar) return null;
+  // "K:1a2b3c4d" ya da "1a2b3c4d" kısa koddur (en az 6 karakter). 1-5 haneli sayı liste numarasıdır.
+  anahtar = String(anahtar).replace(/^K:/i, "");
+  const k = /^\d{1,5}$/.test(anahtar)
+    ? vt.prepare("SELECT id, ozet, ozgun_ad FROM kanitlar WHERE id = ?").get(Number(anahtar))
+    : /^[0-9a-f]{6,64}$/i.test(anahtar)
+      ? vt.prepare("SELECT id, ozet, ozgun_ad FROM kanitlar WHERE ozet LIKE ?").all(`${anahtar.toLowerCase()}%`)
+      : hata(`Kanıtı listedeki numarasıyla ya da K: koduyla ver: ${anahtar}`);
+  if (Array.isArray(k)) {
+    if (k.length !== 1) hata(k.length ? `"${anahtar}" birden fazla kanıta uyuyor, daha uzun yaz.` : `Kanıt bulunamadı: ${anahtar}`);
+    return k[0];
+  }
+  if (!k) hata(`Kanıt bulunamadı: ${anahtar}`);
+  return k;
+}
+
+function kanitlariListele() {
+  const { vt } = klasorVeVt();
+  const satirlar = vt.prepare("SELECT id, ozet, ozgun_ad, boyut FROM kanitlar ORDER BY id").all();
+  if (!satirlar.length) yaz("Henüz kanıt yok. Eklemek için: akreddit kanit-ekle <dosya>");
+  for (const k of satirlar) yaz(`${String(k.id).padStart(3)}  K:${k.ozet.slice(0, 8)}  ${k.ozgun_ad}  (${Math.ceil(k.boyut / 1024)} KB)`);
+}
+
+function ciktiEkle(s) {
+  const { klasor, vt } = klasorVeVt();
+  const tur = String(s.tur || "");
+  if (!["program", "ders"].includes(tur)) hata("--tur program ya da --tur ders yaz.");
+  if (!s.kod || !s.metin) hata("--kod ve --metin gerekli.");
+  const ders = tur === "ders" ? String(s.ders || "") : "";
+  if (tur === "ders" && !ders) hata("Ders çıktısı için --ders <ders kodu> yaz.");
+  const kanit = s.kanit ? kanitBul(vt, s.kanit) : null;
+  const var_ = vt.prepare("SELECT metin FROM ciktilar WHERE tur = ? AND ders = ? AND kod = ?").get(tur, ders, String(s.kod));
+  if (var_) {
+    if (var_.metin === String(s.metin)) return yaz("Zaten kayıtlı.");
+    hata("Bu kodla farklı bir metin kayıtlı. Çıktı değiştiyse yeni sürümü yeni kodla ekle (örnek: PÇ3-v2).");
+  }
+  vt.prepare("INSERT INTO ciktilar (tur, ders, kod, metin, kanit_id, eklenme) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(tur, ders, String(s.kod), String(s.metin), kanit?.id ?? null, new Date().toISOString());
+  vt.close();
+  adimKaydet(klasor, { eylem: "cikti_eklendi", ayrinti: JSON.stringify({ tur, ders, kod: s.kod }) });
+  yaz(`Eklendi: ${tur === "ders" ? `${ders}.` : ""}${s.kod}`);
+}
+
+function ciktilariListele() {
+  const { vt } = klasorVeVt();
+  for (const c of vt.prepare("SELECT tur, ders, kod, metin FROM ciktilar ORDER BY tur DESC, ders, kod").all()) {
+    yaz(`${c.tur === "program" ? "Program" : `Ders ${c.ders}`}  ${c.kod}: ${c.metin}`);
+  }
+}
+
+function oneriKaydet(klasor, vt, o) {
+  const r = vt.prepare(`INSERT INTO oneriler (tur, hedef, iliski, puan, deger, gerekce, kanit_id, konum, inceleme, olusturma)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(o.tur, o.hedef, o.iliski ?? null, o.puan ?? null, o.deger ?? null, o.gerekce, o.kanitId ?? null, o.konum ?? null, o.inceleme ?? null, new Date().toISOString());
+  const id = Number(r.lastInsertRowid);
+  vt.close();
+  adimKaydet(klasor, { eylem: `oneri_${o.tur}`, ayrinti: JSON.stringify({ id, hedef: o.hedef }) });
+  yaz(`Öneri #${id} kaydedildi. Kullanıcı karar verene kadar "bekliyor".${o.inceleme ? ` İnceleme notu: ${o.inceleme}` : ""}`);
+}
+
+function onerEtiket(s) {
+  const { klasor, vt } = klasorVeVt();
+  if (!s.kanit || !s.baslik || !s.gerekce) hata("--kanit, --baslik ve --gerekce gerekli.");
+  const kanit = kanitBul(vt, s.kanit);
+  oneriKaydet(klasor, vt, { tur: "etiket", hedef: `K:${kanit.ozet.slice(0, 8)}`, deger: String(s.baslik), gerekce: String(s.gerekce), kanitId: kanit.id, konum: s.konum });
+}
+
+function matrisDegeri(s) {
+  const secilen = [s.puan !== undefined, Boolean(s.iliskisiz), Boolean(s.yetersiz)].filter(Boolean).length;
+  if (secilen !== 1) hata("Tam olarak birini ver: --puan 1-5, --iliskisiz ya da --yetersiz.");
+  if (s.iliskisiz) return { iliski: "iliskisiz", puan: null };
+  if (s.yetersiz) return { iliski: "yetersiz_kanit", puan: null };
+  const puan = Number(s.puan);
+  if (!Number.isInteger(puan) || puan < 1 || puan > 5) hata("Puan 1 ile 5 arasında tam sayı olmalı. İlişki yoksa --iliskisiz kullan, 0 yazma.");
+  return { iliski: "puan", puan };
+}
+
+function onerMatris(s) {
+  const { klasor, vt } = klasorVeVt();
+  const [ders, dkod] = String(s["ders-cikti"] || "").split(".");
+  const pkod = String(s["program-cikti"] || "");
+  if (!ders || !dkod || !pkod || !s.gerekce) hata("--ders-cikti DERS.KOD, --program-cikti KOD ve --gerekce gerekli.");
+  if (!vt.prepare("SELECT 1 FROM ciktilar WHERE tur = 'ders' AND ders = ? AND kod = ?").get(ders, dkod)) hata(`Ders çıktısı kayıtlı değil: ${ders}.${dkod}`);
+  if (!vt.prepare("SELECT 1 FROM ciktilar WHERE tur = 'program' AND kod = ?").get(pkod)) hata(`Program çıktısı kayıtlı değil: ${pkod}`);
+  const d = matrisDegeri(s);
+  const kanit = s.kanit ? kanitBul(vt, s.kanit) : null;
+  let inceleme = null;
+  if (d.iliski === "puan" && d.puan >= 4 && !kanit) inceleme = "4 ve 5 puan ölçme planından bir kanıtla desteklenmeli.";
+  if (d.iliski === "puan" && !kanit && !inceleme) inceleme = "Kaynak kanıt belirtilmedi.";
+  oneriKaydet(klasor, vt, { tur: "matris", hedef: `${ders}.${dkod}|${pkod}`, ...d, gerekce: String(s.gerekce), kanitId: kanit?.id, konum: s.konum, inceleme });
+}
+
+function onerileriListele(s) {
+  const { vt } = klasorVeVt();
+  const durum = s.hepsi ? null : String(s.durum || "bekliyor");
+  const satirlar = vt.prepare(`SELECT o.*, k.ozgun_ad FROM oneriler o LEFT JOIN kanitlar k ON k.id = o.kanit_id
+    ${durum ? "WHERE o.karar = ?" : ""} ORDER BY o.id`).all(...(durum ? [durum] : []));
+  if (!satirlar.length) return yaz(durum === "bekliyor" ? "Bekleyen öneri yok." : "Öneri yok.");
+  for (const o of satirlar) {
+    const deger = o.tur === "etiket" ? o.deger : o.iliski === "puan" ? `${o.puan} puan` : o.iliski === "iliskisiz" ? "ilişkisiz" : "kanıt yetersiz";
+    yaz(`#${o.id} [${o.karar}] ${o.tur} ${o.hedef} → ${deger}`);
+    yaz(`     Gerekçe: ${o.gerekce}`);
+    if (o.ozgun_ad) yaz(`     Kaynak: ${o.ozgun_ad}${o.konum ? `, ${o.konum}` : ""}`);
+    if (o.inceleme) yaz(`     İnceleme: ${o.inceleme}`);
+  }
+}
+
+function karar(s) {
+  const { klasor, vt } = klasorVeVt();
+  const [id, eylem] = s._;
+  if (!id || !["onayla", "reddet", "duzelt"].includes(eylem)) hata("Kullanım: akreddit karar <id> onayla|reddet|duzelt --onaylayan \"Ad Soyad\"");
+  if (!s.onaylayan) hata("Kararı kimin verdiğini yaz: --onaylayan \"Ad Soyad\". Kararı yapay zekâ veremez.");
+  const o = vt.prepare("SELECT * FROM oneriler WHERE id = ?").get(Number(id));
+  if (!o) hata(`Öneri bulunamadı: #${id}`);
+  if (o.karar !== "bekliyor") hata(`#${id} için zaten karar verilmiş (${o.karar}). Değişiklik için yeni öneri aç.`);
+  let son = { iliski: o.iliski, puan: o.puan, deger: o.deger };
+  if (eylem === "duzelt") {
+    if (o.tur === "matris") son = { ...matrisDegeri(s), deger: null };
+    else { if (!s.deger) hata("Yeni etiketi yaz: --deger \"başlık\""); son = { iliski: null, puan: null, deger: String(s.deger) }; }
+  }
+  const sonuc = { onayla: "onaylandi", reddet: "reddedildi", duzelt: "duzeltildi" }[eylem];
+  vt.prepare(`UPDATE oneriler SET karar = ?, son_iliski = ?, son_puan = ?, son_deger = ?, karar_veren = ?, karar_zamani = ? WHERE id = ?`)
+    .run(sonuc, eylem === "reddet" ? null : son.iliski, eylem === "reddet" ? null : son.puan, eylem === "reddet" ? null : son.deger, String(s.onaylayan), new Date().toISOString(), o.id);
+  vt.close();
+  adimKaydet(klasor, { eylem: `karar_${sonuc}`, ayrinti: JSON.stringify({ id: o.id, hedef: o.hedef }), onaylayan: String(s.onaylayan) });
+  yaz(`#${o.id}: ${sonuc}.`);
+}
+
+function matrisOlustur(s) {
+  const { klasor, vt } = klasorVeVt();
+  const program = vt.prepare("SELECT kod FROM ciktilar WHERE tur = 'program' ORDER BY kod").all().map((r) => r.kod);
+  const dersler = vt.prepare("SELECT ders, kod FROM ciktilar WHERE tur = 'ders' ORDER BY ders, kod").all();
+  if (!program.length || !dersler.length) hata("Önce program ve ders çıktılarını ekle: akreddit cikti-ekle");
+  // Her hücre için son onaylı ya da düzeltilmiş karar geçerlidir.
+  const kararlar = new Map();
+  for (const o of vt.prepare("SELECT hedef, son_iliski, son_puan FROM oneriler WHERE tur = 'matris' AND karar IN ('onaylandi', 'duzeltildi') ORDER BY karar_zamani").all()) {
+    kararlar.set(o.hedef, o);
+  }
+  const bekleyen = vt.prepare("SELECT COUNT(*) AS n FROM oneriler WHERE tur = 'matris' AND karar = 'bekliyor'").get().n;
+  vt.close();
+  const hucre = (h, csv) => {
+    const k = kararlar.get(h);
+    if (!k) return "";
+    if (k.son_iliski === "puan") return String(k.son_puan);
+    return csv ? k.son_iliski : k.son_iliski === "iliskisiz" ? "·" : "?";
+  };
+  const md = [
+    "# Ders çıktısı × program çıktısı matrisi",
+    "",
+    `Oluşturma: ${new Date().toISOString().slice(0, 16).replace("T", " ")}. Yalnız kullanıcının onayladığı ya da düzelttiği değerler yer alır.`,
+    "",
+    `| Ders çıktısı | ${program.join(" | ")} |`,
+    `|---|${program.map(() => "---").join("|")}|`,
+    ...dersler.map((d) => `| ${d.ders}.${d.kod} | ${program.map((p) => hucre(`${d.ders}.${d.kod}|${p}`, false)).join(" | ")} |`),
+    "",
+    "Gösterim: 1-5 katkı düzeyi. `·` ilişkisiz. `?` kanıt yetersiz. Boş hücre henüz değerlendirilmedi. Bu tablo tasarım uyumunu gösterir, öğrenci başarısını göstermez.",
+    bekleyen ? `\nKarar bekleyen ${bekleyen} matris önerisi var.` : "",
+  ].join("\n");
+  const csv = [["ders_ciktisi", ...program].join(","), ...dersler.map((d) => [`${d.ders}.${d.kod}`, ...program.map((p) => hucre(`${d.ders}.${d.kod}|${p}`, true))].join(","))].join("\n");
+  writeFileSync(join(klasor, "raporlar", "matris.md"), `${md}\n`);
+  writeFileSync(join(klasor, "raporlar", "matris.csv"), `${csv}\n`);
+  adimKaydet(klasor, { eylem: "matris_olusturuldu", ayrinti: JSON.stringify({ hucre: kararlar.size, bekleyen }) });
+  yaz(md);
+  if (s.csv) yaz(`\nCSV: ${join(klasor, "raporlar", "matris.csv")}`);
+}
+
+/** Rapor denetimi: her [K:xxxxxxxx] gerçek bir kanıta çıkmalı, sayı içeren paragraf kaynaksız kalmamalı. */
+function raporDenetle(s) {
+  const { klasor, vt } = klasorVeVt();
+  const dosya = s._[0];
+  if (!dosya || !existsSync(dosya)) hata("Denetlenecek rapor dosyasını yaz: akreddit rapor-denetle raporlar/bolum.md");
+  const kanitlar = vt.prepare("SELECT ozet, ozgun_ad FROM kanitlar").all();
+  vt.close();
+  const metin = readFileSync(dosya, "utf8");
+  const hatalar = [];
+  const uyarilar = [];
+  const kullanilan = new Set();
+  metin.split(/\n{2,}/).forEach((paragraf, i) => {
+    if (/^\s*(#|\||```)/.test(paragraf)) return;
+    const atiflar = [...paragraf.matchAll(/\[K:([0-9a-f]{6,64})(?:[^\]]*)\]/gi)].map((m) => m[1].toLowerCase());
+    for (const a of atiflar) {
+      const eslesen = kanitlar.filter((k) => k.ozet.startsWith(a));
+      if (eslesen.length !== 1) hatalar.push(`Paragraf ${i + 1}: [K:${a}] ${eslesen.length ? "birden fazla kanıta uyuyor" : "hiçbir kanıta karşılık gelmiyor"}.`);
+      else kullanilan.add(eslesen[0].ozgun_ad);
+    }
+    const eksik = /\[EKSİK[^\]]*\]/i.test(paragraf);
+    if (!atiflar.length && !eksik && /\d/.test(paragraf.replace(/\b(19|20)\d{2}(-(19|20)\d{2})?\b/g, ""))) {
+      uyarilar.push(`Paragraf ${i + 1}: sayı içeriyor ama kaynak göstergesi yok: "${paragraf.trim().slice(0, 80)}…"`);
+    }
+  });
+  const eksikler = [...metin.matchAll(/\[EKSİK:?\s*([^\]]*)\]/gi)].map((m) => m[1].trim());
+  yaz(`Rapor: ${dosya}`);
+  yaz(`Kaynak gösterilen kanıt: ${kullanilan.size}`);
+  if (eksikler.length) { yaz(`Eksik diye işaretlenen: ${eksikler.length}`); eksikler.forEach((e) => yaz(`  - ${e}`)); }
+  uyarilar.forEach((u) => yaz(`Uyarı: ${u}`));
+  hatalar.forEach((h) => yaz(`HATA: ${h}`));
+  adimKaydet(klasor, { eylem: "rapor_denetlendi", ayrinti: JSON.stringify({ dosya: basename(dosya), hata: hatalar.length, uyari: uyarilar.length }) });
+  if (hatalar.length) process.exit(CIKIS.hata);
+  yaz(hatalar.length + uyarilar.length ? "" : "Denetim temiz.");
+}
+
+// ---------- Faz 5: onaylı yazma planları ----------
+
+const PLAN_OMRU_DK = 20;
+const PLAN_EN_UZUN_DK = 120;
+const PLAN_EN_COK_ALAN = 400;
+
+function planTablosu(p) {
+  const alanlar = JSON.parse(p.alanlar);
+  const satirlar = [
+    `Yazma planı #${p.id} [${p.durum}] · ${p.sistem} · ${p.adres}`,
+    "",
+    "| Alan | Şu anki değer | Yeni değer | Kaynak |",
+    "|---|---|---|---|",
+    ...alanlar.map((a) => `| ${a.alan} | ${a.mevcut || "(boş)"} | ${a.yeni} | ${a.kaynak} |`),
+  ];
+  return satirlar.join("\n");
+}
+
+function yazmaPlani(s) {
+  const { klasor, vt } = klasorVeVt();
+  if (!s.sistem || !s.adres || !s.alanlar) hata("--sistem, --adres ve --alanlar '<json>' gerekli.");
+  let alanlar;
+  try { alanlar = JSON.parse(String(s.alanlar)); } catch { hata("--alanlar geçerli bir JSON dizisi olmalı."); }
+  if (!Array.isArray(alanlar) || !alanlar.length) hata("En az bir alan ver.");
+  if (alanlar.length > PLAN_EN_COK_ALAN) hata(`Bir planda en fazla ${PLAN_EN_COK_ALAN} alan olabilir. Dersi sekmelere böl.`);
+  for (const a of alanlar) {
+    if (!a.alan || typeof a.yeni !== "string" || !a.kaynak) hata("Her alanda alan, yeni ve kaynak olmalı. Kaynağı olmayan değer yazılmaz.");
+    if (/parola|şifre|sifre|password|pin|doğrulama kodu/i.test(a.alan)) hata(`"${a.alan}" bir giriş bilgisi alanı. Bunu yalnız kullanıcı kendisi yazar.`);
+    if (!/\[K:[0-9a-f]{6,}|K:[0-9a-f]{6,}|onaylı öneri #\d+|kullanıcı beyanı/i.test(a.kaynak)) {
+      hata(`"${a.alan}" için kaynak K:kod, "onaylı öneri #N" ya da "kullanıcı beyanı" olmalı.`);
+    }
+  }
+  const r = vt.prepare("INSERT INTO yazma_planlari (sistem, adres, alanlar, olusturma) VALUES (?, ?, ?, ?)")
+    .run(String(s.sistem), String(s.adres), JSON.stringify(alanlar), new Date().toISOString());
+  const p = vt.prepare("SELECT * FROM yazma_planlari WHERE id = ?").get(Number(r.lastInsertRowid));
+  vt.close();
+  adimKaydet(klasor, { eylem: "yazma_plani", adres: p.adres, ayrinti: JSON.stringify({ id: p.id, alan: alanlar.length }) });
+  yaz(planTablosu(p));
+  yaz(`\nKullanıcı tabloyu kontrol edip onaylarsa: akreddit yazma-onay ${p.id} --onaylayan "Ad Soyad"`);
+}
+
+function yazmaOnay(s) {
+  const { klasor, vt } = klasorVeVt();
+  const id = Number(s._[0]);
+  if (!id || !s.onaylayan) hata("Kullanım: akreddit yazma-onay <id> --onaylayan \"Ad Soyad\"");
+  const an = new Date();
+  const omur = Math.min(Number(s.sure) || PLAN_OMRU_DK, PLAN_EN_UZUN_DK);
+  // Aynı anda tek onaylı plan: öncekiler iptal edilir.
+  vt.prepare("UPDATE yazma_planlari SET durum = 'iptal', sonuc = 'yeni plan onaylandı' WHERE durum = 'onaylandi' AND id <> ?").run(id);
+  const r = vt.prepare("UPDATE yazma_planlari SET durum = 'onaylandi', onaylayan = ?, onay_zamani = ?, son_kullanma = ? WHERE id = ? AND durum = 'bekliyor'")
+    .run(String(s.onaylayan), an.toISOString(), new Date(an.getTime() + omur * 60000).toISOString(), id);
+  if (Number(r.changes) !== 1) hata(`#${id} onay bekleyen bir plan değil.`);
+  vt.close();
+  adimKaydet(klasor, { eylem: "yazma_onaylandi", ayrinti: JSON.stringify({ id }), onaylayan: String(s.onaylayan) });
+  yaz(`Plan #${id} ${omur} dakika geçerli. Tarayıcıda her yazma işleminde Claude Code ayrıca izin soracak.`);
+}
+
+function yazmaBitir(s) {
+  const { klasor, vt } = klasorVeVt();
+  const [id, durum] = s._;
+  if (!id || !["tamamlandi", "iptal"].includes(durum)) hata("Kullanım: akreddit yazma-bitir <id> tamamlandi|iptal --sonuc \"…\"");
+  const r = vt.prepare("UPDATE yazma_planlari SET durum = ?, sonuc = ? WHERE id = ? AND durum IN ('bekliyor', 'onaylandi')")
+    .run(durum, String(s.sonuc || ""), Number(id));
+  if (Number(r.changes) !== 1) hata(`#${id} açık bir plan değil.`);
+  vt.close();
+  adimKaydet(klasor, { eylem: `yazma_${durum}`, ayrinti: JSON.stringify({ id: Number(id), sonuc: s.sonuc || "" }) });
+  yaz(`Plan #${id}: ${durum}.`);
+}
+
+function yazmaPlanlari() {
+  const { vt } = klasorVeVt();
+  const planlar = vt.prepare("SELECT * FROM yazma_planlari ORDER BY id DESC LIMIT 20").all();
+  vt.close();
+  if (!planlar.length) return yaz("Yazma planı yok.");
+  planlar.forEach((p) => yaz(`${planTablosu(p)}\n`));
+}
+
+// ---------- Faz 6: pilot ölçümü ----------
+
+const OTURUM_ARASI_SAAT = 2;
+
+function pilotRaporu(s) {
+  const { klasor, vt } = klasorVeVt();
+  const adimlar = vt.prepare("SELECT zaman, eylem, ayrinti FROM adimlar ORDER BY zaman").all();
+  const oneriler = vt.prepare("SELECT tur, karar, inceleme FROM oneriler").all();
+  const planlar = vt.prepare("SELECT durum FROM yazma_planlari").all();
+  const kanitSayisi = vt.prepare("SELECT COUNT(*) AS n FROM kanitlar").get().n;
+  const etiketliKanit = vt.prepare("SELECT COUNT(DISTINCT kanit_id) AS n FROM oneriler WHERE tur = 'etiket' AND karar IN ('onaylandi', 'duzeltildi')").get().n;
+  const ciktiSayisi = vt.prepare("SELECT COUNT(*) AS n FROM ciktilar").get().n;
+  vt.close();
+
+  // Oturumlar: aralarında 2 saatten uzun boşluk olan adım grupları. Etkin süre grup sürelerinin toplamı.
+  const oturumlar = [];
+  for (const a of adimlar) {
+    const t = Date.parse(a.zaman);
+    const son = oturumlar.at(-1);
+    if (son && t - son.bitis <= OTURUM_ARASI_SAAT * 3600000) son.bitis = t;
+    else oturumlar.push({ baslangic: t, bitis: t });
+  }
+  const etkinSaat = oturumlar.reduce((t, o) => t + (o.bitis - o.baslangic), 0) / 3600000;
+
+  const say = (dizi, f) => dizi.filter(f).length;
+  const kararli = say(oneriler, (o) => o.karar !== "bekliyor");
+  const oran = (n) => (kararli ? `%${Math.round((100 * n) / kararli)}` : "-");
+  const denetimler = adimlar.filter((a) => a.eylem === "rapor_denetlendi").map((a) => JSON.parse(a.ayrinti || "{}"));
+  let yazmaIstegi = 0;
+  const gunlukKlasoru = join(klasor, "gunluk");
+  if (existsSync(gunlukKlasoru)) {
+    for (const d of readdirSync(gunlukKlasoru).filter((x) => x.endsWith(".jsonl"))) {
+      yazmaIstegi += readFileSync(join(gunlukKlasoru, d), "utf8").split("\n").filter((l) => l.includes('"tarayici_yazma_istegi"')).length;
+    }
+  }
+  const eski = s["eski-saat"] ? Number(s["eski-saat"]) : null;
+
+  const satirlar = [
+    "# Pilot raporu",
+    "",
+    `Klasör: ${basename(klasor)}. Oluşturma: ${new Date().toISOString().slice(0, 16).replace("T", " ")}.`,
+    "",
+    "## Süre",
+    "",
+    `- Çalışma oturumu: ${oturumlar.length}`,
+    `- Etkin süre: ${etkinSaat.toFixed(1)} saat (aralarında ${OTURUM_ARASI_SAAT} saatten kısa boşluk olan adımlar tek oturum sayıldı)`,
+    eski ? `- Eski yöntemle tahmini süre: ${eski} saat` : "- Eski yöntemle tahmini süre: girilmedi (--eski-saat N)",
+    eski ? `- İnsan süresindeki azalma: %${Math.round(100 * (1 - etkinSaat / eski))}` : "",
+    "",
+    "## Öneriler ve insan kararı",
+    "",
+    `- Öneri: ${oneriler.length} (etiket ${say(oneriler, (o) => o.tur === "etiket")}, matris ${say(oneriler, (o) => o.tur === "matris")})`,
+    `- Onaylanan: ${say(oneriler, (o) => o.karar === "onaylandi")} (${oran(say(oneriler, (o) => o.karar === "onaylandi"))})`,
+    `- Düzeltilen: ${say(oneriler, (o) => o.karar === "duzeltildi")} (${oran(say(oneriler, (o) => o.karar === "duzeltildi"))})`,
+    `- Reddedilen: ${say(oneriler, (o) => o.karar === "reddedildi")} (${oran(say(oneriler, (o) => o.karar === "reddedildi"))})`,
+    `- Karar bekleyen: ${say(oneriler, (o) => o.karar === "bekliyor")}`,
+    `- İnceleme notu alan: ${say(oneriler, (o) => o.inceleme)}`,
+    "",
+    "## Kanıt ve rapor",
+    "",
+    `- Kanıt dosyası: ${kanitSayisi}, onaylı etiketi olan: ${etiketliKanit}`,
+    `- Kayıtlı çıktı: ${ciktiSayisi}`,
+    `- Rapor denetimi: ${denetimler.length} kez, toplam hata ${denetimler.reduce((t, d) => t + (d.hata || 0), 0)}, uyarı ${denetimler.reduce((t, d) => t + (d.uyari || 0), 0)}`,
+    "",
+    "## Kurum sistemleri",
+    "",
+    `- Yazma planı: ${planlar.length} (tamamlanan ${say(planlar, (p) => p.durum === "tamamlandi")}, iptal ${say(planlar, (p) => p.durum === "iptal")})`,
+    `- Tarayıcı yazma isteği: ${yazmaIstegi}`,
+    "",
+    "Sınırlılık: süre adım kayıtlarından hesaplanır, modelin bekleme süresini de içerir. Düzeltme ve ret oranı yüksekse hız kazancı başarı sayılmaz.",
+  ].filter((x) => x !== "");
+  const metin = satirlar.join("\n").replace(/\n## /g, "\n\n## ").replace(/(## [^\n]+)\n/g, "$1\n\n");
+  writeFileSync(join(klasor, "raporlar", "pilot-raporu.md"), `${metin}\n`);
+  yaz(metin);
+}
+
+// ---------- Bologna Bilgi Paketi ----------
+
+async function bolognaModulu() {
+  return import(new URL("../lib/bologna.mjs", import.meta.url).href);
+}
+
+/** Bir dosyayı kanıt olarak kaydeder, var olanı tekrar eklemez. Kanıt kimliğini döner. */
+function kanitKaydet(klasor, vt, ad, icerik) {
+  const ozet = createHash("sha256").update(icerik).digest("hex");
+  const var_ = vt.prepare("SELECT id FROM kanitlar WHERE ozet = ?").get(ozet);
+  if (var_) return { id: var_.id, ozet };
+  const yol = join("kanitlar", `${ozet.slice(0, 16)}-${ad}`);
+  writeFileSync(join(klasor, yol), icerik);
+  chmodSync(join(klasor, yol), 0o444);
+  const r = vt.prepare("INSERT INTO kanitlar (ozet, ozgun_ad, yol, boyut, eklenme) VALUES (?, ?, ?, ?, ?)")
+    .run(ozet, ad, yol, Buffer.byteLength(icerik), new Date().toISOString());
+  return { id: Number(r.lastInsertRowid), ozet };
+}
+
+async function bolognaAl(s) {
+  const { klasor, vt } = klasorVeVt();
+  vt.close();
+  const adres = s._[0];
+  if (!adres) hata("Programın Bologna adresini ver: akreddit bologna-al \"https://…/bologna/index.aspx?…curSunit=…\"");
+  const { programiOku } = await bolognaModulu();
+  const dersler = s.dersler ? String(s.dersler).split(",").map((x) => x.trim().toUpperCase()).filter(Boolean) : null;
+  let veri;
+  try {
+    veri = await programiOku(adres, { dersler, ilerleme: (m) => process.stderr.write(`${m}\n`) });
+  } catch (e) {
+    hata(`Bologna okunamadı: ${e.message}`);
+  }
+  const db = yerelVt(klasor);
+  const tarih = veri.okundu.slice(0, 10);
+  const kanit = kanitKaydet(klasor, db, `bologna-${tarih}.json`, JSON.stringify(veri, null, 2));
+  db.prepare("INSERT INTO bologna_aktarimlari (zaman, adres, kanit_id, ders_sayisi) VALUES (?, ?, ?, ?)").run(veri.okundu, adres, kanit.id, veri.dersler.length);
+
+  // Çıktıları çalışma klasörüne aktar. Aynı kodla farklı metin varsa dokunma, bildir.
+  const cakisan = [];
+  const ekle = db.prepare("INSERT OR IGNORE INTO ciktilar (tur, ders, kod, metin, kanit_id, eklenme) VALUES (?, ?, ?, ?, ?, ?)");
+  const mevcut = db.prepare("SELECT metin FROM ciktilar WHERE tur = ? AND ders = ? AND kod = ?");
+  const aktar = (tur, ders, c) => {
+    const m = mevcut.get(tur, ders, c.kod);
+    if (m && m.metin !== c.metin) return cakisan.push(`${ders ? `${ders}.` : ""}${c.kod}`);
+    if (c.metin.length >= 5) ekle.run(tur, ders, c.kod, c.metin, kanit.id, veri.okundu);
+  };
+  veri.programCiktilari.forEach((c) => aktar("program", "", c));
+  for (const d of veri.dersler) (d.ciktilar || []).forEach((c) => aktar("ders", d.kod, c));
+  db.close();
+  adimKaydet(klasor, { eylem: "bologna_alindi", adres, ayrinti: JSON.stringify({ kanit: kanit.ozet.slice(0, 8), ders: veri.dersler.length }) });
+  yaz(`Okundu: ${veri.programCiktilari.length} program çıktısı, ${veri.matris.dersler.length} matris satırı, ${veri.dersler.length} ders sayfası.`);
+  yaz(`Kanıt olarak saklandı: K:${kanit.ozet.slice(0, 8)} (bologna-${tarih}.json)`);
+  if (cakisan.length) yaz(`Metni değişmiş çıktılar (aktarılmadı, kontrol et): ${cakisan.join(", ")}`);
+  yaz("Denetim için: akreddit bologna-denetle");
+}
+
+const KURAL_ADLARI = {
+  "program-ciktisi": "Program çıktıları",
+  "bos-sayfa": "Boş ders bilgi sayfası",
+  tyyc: "TYYÇ matrisi",
+  "matris-bos": "Boş matris satırı",
+  "matris-ayrimsiz": "Ayrım yapılmamış matris satırı",
+  "matris-tutarlilik": "Ders sayfası ile program matrisi uyuşmazlığı",
+  "katki-destegi": "Ders çıktılarıyla desteklenmeyen genel katkı",
+  "akts-isyuku": "AKTS ve iş yükü uyumu",
+  degerlendirme: "Değerlendirme ağırlıkları",
+  "ders-yapisi": "Ders yapısı yüzdeleri",
+  kredi: "Ulusal kredi",
+  "ders-ciktisi": "Ders öğrenme çıktıları",
+  haftalar: "Haftalık konular",
+  guncellik: "Güncellik",
+  okuma: "Okunamayan sayfalar",
+};
+
+async function bolognaDenetle(s) {
+  const { klasor, vt } = klasorVeVt();
+  const son = vt.prepare("SELECT b.*, k.ozet, k.yol FROM bologna_aktarimlari b JOIN kanitlar k ON k.id = b.kanit_id ORDER BY b.id DESC LIMIT 1").get();
+  vt.close();
+  if (!son) hata("Önce Bologna verisini al: akreddit bologna-al <adres>");
+  const veri = JSON.parse(readFileSync(join(klasor, son.yol), "utf8"));
+  const { denetle } = await bolognaModulu();
+  const [alt, ust] = String(s["akts-saat"] || "25-30").split("-").map(Number);
+  const bulgular = denetle(veri, { aktsSaat: [alt, ust] });
+  const kaynak = `[K:${son.ozet.slice(0, 8)}]`;
+  const hataSayisi = bulgular.filter((b) => b.duzey === "hata").length;
+  const satirlar = [
+    "# Bologna Bilgi Paketi denetimi",
+    "",
+    `Kaynak: ${son.adres} (okunma ${son.zaman.slice(0, 16).replace("T", " ")}) ${kaynak}`,
+    "",
+    `${veri.dersler.length} ders sayfası incelendi. ${hataSayisi} hata, ${bulgular.length - hataSayisi} uyarı.`,
+    "",
+    "Bu kurallar resmî ölçüt değildir. Tutarsızlığı işaretler, düzeltme kararını komisyon verir. AKTS başına beklenen saat aralığı: " + `${alt}-${ust}.`,
+  ];
+  for (const [kural, ad] of Object.entries(KURAL_ADLARI)) {
+    const grup = bulgular.filter((b) => b.kural === kural);
+    if (!grup.length) continue;
+    satirlar.push("", `## ${ad} (${grup.length})`, "");
+    for (const b of grup) satirlar.push(`- **${b.duzey === "hata" ? "Hata" : "Uyarı"}** ${b.ders === "-" ? "" : `${b.ders}: `}${b.aciklama} ${kaynak}`);
+  }
+  if (!bulgular.length) satirlar.push("", "Denetimde bulgu çıkmadı.");
+  const metin = satirlar.join("\n");
+  writeFileSync(join(klasor, "raporlar", "bologna-denetim.md"), `${metin}\n`);
+  adimKaydet(klasor, { eylem: "bologna_denetlendi", ayrinti: JSON.stringify({ hata: hataSayisi, uyari: bulgular.length - hataSayisi }) });
+  yaz(metin);
+}
+
+async function bolognaTaslakDenetle(s) {
+  const dosya = s._[0];
+  if (!dosya || !existsSync(dosya)) hata("Taslak dosyasını ver: akreddit bologna-taslak-denetle raporlar/bologna/TBP201.json");
+  let taslak;
+  try { taslak = JSON.parse(readFileSync(dosya, "utf8")); } catch (e) { hata(`Taslak geçerli JSON değil: ${e.message}`); }
+  const { taslakDenetle } = await import(new URL("../lib/bologna-taslak.mjs", import.meta.url).href);
+  const sonuc = taslakDenetle(taslak, { bolen: Number(s.bolen) || 30 });
+  yaz(`Taslak: ${taslak.kod || "?"} ${taslak.ad || ""}`);
+  yaz(`İş yükü: ${sonuc.isToplam} / ${sonuc.hedef} saat`);
+  sonuc.hatalar.forEach((h) => yaz(`HATA ${h}`));
+  sonuc.uyarilar.forEach((u) => yaz(`Uyarı ${u}`));
+  const klasor = klasorBul();
+  if (klasor) adimKaydet(klasor, { eylem: "bologna_taslak_denetlendi", ayrinti: JSON.stringify({ kod: taslak.kod, hata: sonuc.hatalar.length, uyari: sonuc.uyarilar.length }) });
+  if (sonuc.hatalar.length) process.exit(CIKIS.hata);
+  yaz("Taslak bütün kurallardan geçti.");
+}
+
+const YARDIM = `Akreddit
+
+  ajan [görev]              Yapay zekâ ajanını seçtiğin modelle başlatır
+  model [--adres URL --model ad --anahtar-degiskeni AD]  Model ayarını gösterir ya da kaydeder
+  kur [klasor]              Çalışma klasörü oluşturur
+  kanit-ekle <dosya…>       Dosyaları kanıt olarak ekler (özgünü korunur)
+  adim <eylem> [--adres u] [--ayrinti json] [--ekran yol] [--onaylayan kisi]
+                            Adım günlüğüne kayıt ekler
+  ozet                      Klasörün durumunu ve son adımları gösterir
+  kanitlar                  Kanıtları kısa kodlarıyla listeler (raporda [K:kod] olarak kullanılır)
+  cikti-ekle --tur program|ders [--ders KOD] --kod KOD --metin "…" [--kanit id]
+  ciktilar                  Kayıtlı program ve ders çıktıları
+  oner-etiket --kanit id --baslik "…" --gerekce "…" [--konum "s. 3"]
+  oner-matris --ders-cikti DERS.KOD --program-cikti KOD (--puan 1-5 | --iliskisiz | --yetersiz)
+              --gerekce "…" [--kanit id] [--konum "…"]
+  oneriler [--durum bekliyor|onaylandi|duzeltildi|reddedildi] [--hepsi]
+  karar <id> onayla|reddet|duzelt --onaylayan "Ad Soyad" [--puan N|--iliskisiz|--yetersiz|--deger "…"]
+  matris [--csv]            Onaylı değerlerden matrisi raporlar/ altına yazar
+  rapor-denetle <dosya.md>  Kaynak göstergelerini kanıtlara karşı denetler
+  yazma-plani --sistem ad --adres URL --alanlar '[{"alan","mevcut","yeni","kaynak"}]'
+  yazma-onay <id> --onaylayan "Ad Soyad" [--sure dk]   Planı açar (varsayılan 20, en çok 120 dakika)
+  yazma-bitir <id> tamamlandi|iptal --sonuc "…"
+  yazma-planlari            Son yazma planları
+  pilot-raporu [--eski-saat N]  Süre, karar oranları ve kapsamı raporlar/pilot-raporu.md'ye yazar
+  bologna-al <adres> [--dersler A,B]  Programın herkese açık Bologna verisini kanıt olarak alır
+  bologna-denetle [--akts-saat 25-30]  AKTS, değerlendirme, matris tutarlılığı ve diğer kuralları denetler
+  bologna-taslak-denetle <taslak.json> [--bolen 30]  Yazılacak ders sayfası taslağını K1-K12 kurallarıyla denetler`;
+
+const [komut, ...geri] = process.argv.slice(2);
+const s = secenekler(geri);
+const KOMUTLAR = {
+  ajan: async (s) => (await import(new URL("../lib/ajan.mjs", import.meta.url).href)).ajanBaslat(s),
+  model: async (s) => (await import(new URL("../lib/model.mjs", import.meta.url).href)).modelKomutu(s),
+  kur, "kanit-ekle": kanitEkle, adim, ozet: ozetGoster,
+  kanitlar: kanitlariListele, "cikti-ekle": ciktiEkle, ciktilar: ciktilariListele,
+  "oner-etiket": onerEtiket, "oner-matris": onerMatris, oneriler: onerileriListele,
+  karar, matris: matrisOlustur, "rapor-denetle": raporDenetle,
+  "yazma-plani": yazmaPlani, "yazma-onay": yazmaOnay, "yazma-bitir": yazmaBitir, "yazma-planlari": yazmaPlanlari,
+  "pilot-raporu": pilotRaporu,
+  "bologna-al": bolognaAl, "bologna-denetle": bolognaDenetle, "bologna-taslak-denetle": bolognaTaslakDenetle,
+};
+if (!KOMUTLAR[komut]) { yaz(YARDIM); process.exit(komut ? CIKIS.hata : 0); }
+await KOMUTLAR[komut](s);

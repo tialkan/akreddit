@@ -1,0 +1,499 @@
+{
+  "kod": "TBP201",
+  "ad": "İnternet Programlama",
+  "akts": 5,
+  "tul": "2+1+0",
+  "bolen": 30,
+  "amac": {
+    "tr": "Bu dersin amacı, öğrencilere modern web teknolojilerinin temel yapı taşlarını (HTML5, CSS3 ve JavaScript) tanıtarak istemci tarafında çalışan, görsel açıdan tutarlı, erişilebilir ve farklı ekranlara duyarlı web sayfaları geliştirebilme yetkinliği kazandırmaktır. Öğrenciler semantik işaretleme, kutu modeli, esnek ve ızgara düzenleri, belge nesne modeli üzerinde işlem yapma, olay yönetimi ve temel form doğrulama konularında uygulamalı beceri geliştirir. Dönem sonunda küçük ölçekli, çok sayfalı bir web sitesini ya da etkileşimli bir arayüzü bağımsız olarak üretebilmeleri hedeflenir.",
+    "en": "The aim of this course is to introduce students to the core building blocks of modern web technologies (HTML5, CSS3 and JavaScript) and to help them gain the competence to build client-side web pages that are visually consistent, accessible and responsive to different screens. Students develop hands-on skills in semantic markup, the box model, flexible and grid layouts, working with the document object model, event handling and basic form validation. By the end of the term they are expected to build a small multi-page website or an interactive interface independently."
+  },
+  "icerik": {
+    "tr": "Ders, internetin ve web’in çalışma mantığıyla başlar: istemci-sunucu modeli, HTTP ve HTTPS protokolleri, alan adı çözümleme ve tarayıcının bir sayfayı nasıl işlediği ele alınır. Ardından HTML5 belge yapısı, semantik etiketler, bağlantılar, listeler, tablolar ve form elemanları uygulamalı olarak işlenir. CSS3 bölümünde seçiciler, kalıtım ve öncelik kuralları, kutu modeli, tipografi, renk sistemleri, esnek kutu (Flexbox) ve ızgara (Grid) düzenleri ile medya sorguları kullanılarak farklı ekranlara duyarlı tasarım yapılır. JavaScript bölümünde sözdizimi, değişkenler, veri türleri, koşul ve döngü yapıları, fonksiyonlar, diziler ve nesneler öğretilir. Belge nesne modeli üzerinde eleman seçme, oluşturma ve değiştirme, olay dinleyicileriyle kullanıcı etkileşimi ve istemci tarafında form doğrulama uygulanır. Temel web güvenliği başlığında siteler arası betik çalıştırma ve istek sahteciliği riskleri tanıtılır. Fetch ile basit bir servisten veri alma, erişilebilirlik ilkeleri ve tarayıcı geliştirici araçlarıyla hata ayıklama da dersin kapsamındadır. Dönem boyunca öğrenciler bu konuları bir araya getiren küçük ölçekli bir web projesi geliştirir ve sunar.",
+    "en": "The course starts with how the internet and the web work: the client-server model, the HTTP and HTTPS protocols, domain name resolution and how a browser processes a page. It then covers the HTML5 document structure, semantic tags, links, lists, tables and form elements through practice. In the CSS3 part, selectors, inheritance and specificity, the box model, typography, colour systems, Flexbox and Grid layouts and media queries are used to build designs that respond to different screens. The JavaScript part teaches syntax, variables, data types, conditionals and loops, functions, arrays and objects. Selecting, creating and changing elements in the document object model, handling user interaction with event listeners and client-side form validation are applied. Under basic web security, cross-site scripting and request forgery risks are introduced. Fetching data from a simple service, accessibility principles and debugging with browser developer tools are also part of the course. Throughout the term students build and present a small web project that brings these topics together."
+  },
+  "yontem": {
+    "tr": "Ders yüz yüze anlatım ve canlı kodlama ile yürütülür. Her konu önce kısa bir anlatım ve örnekle tanıtılır, ardından bilgisayar laboratuvarında adım adım uygulanır. Haftalık laboratuvar görevleri konuyu pekiştirir. Dönem boyunca proje tabanlı öğrenme yaklaşımıyla küçük bir web sitesi geliştirilir, ara teslimlerde geri bildirim verilir ve dönem sonunda proje sınıfta sunulur.",
+    "en": "The course is delivered through face-to-face lectures and live coding. Each topic is first introduced with a short explanation and an example, then practised step by step in the computer laboratory. Weekly lab tasks reinforce the topic. Throughout the term a small website is developed with a project-based learning approach, feedback is given at interim submissions and the project is presented in class at the end of the term."
+  },
+  "notlar": {
+    "tr": "MDN Web Docs (HTML, CSS, JavaScript); W3C erişilebilirlik özet notları; haftalık laboratuvar görevleri ve örnek proje şablonları (AYBUZEM).",
+    "en": "MDN Web Docs (HTML, CSS, JavaScript); W3C accessibility summary notes; weekly lab tasks and sample project templates (AYBUZEM)."
+  },
+  "onKosul": "Yok",
+  "degerlendirme": [
+    {
+      "ad": "Ara Sınav",
+      "sayi": 1,
+      "katki": 20
+    },
+    {
+      "ad": "Uygulama",
+      "sayi": 1,
+      "katki": 15
+    },
+    {
+      "ad": "Proje",
+      "sayi": 1,
+      "katki": 25
+    },
+    {
+      "ad": "Yarıyıl Sonu Sınavı",
+      "sayi": 1,
+      "katki": 40
+    }
+  ],
+  "isyuku": [
+    {
+      "ad": "Ders Süresi",
+      "sayi": 14,
+      "sure": 3
+    },
+    {
+      "ad": "Sınıf Dışı Çalışma Süresi",
+      "sayi": 14,
+      "sure": 2
+    },
+    {
+      "ad": "Ödevler",
+      "sayi": 14,
+      "sure": 2
+    },
+    {
+      "ad": "Ara Sınavlar",
+      "sayi": 1,
+      "sure": 6
+    },
+    {
+      "ad": "Proje",
+      "sayi": 1,
+      "sure": 30
+    },
+    {
+      "ad": "Yarıyıl Sonu Sınavı",
+      "sayi": 1,
+      "sure": 16
+    }
+  ],
+  "dersYapisi": [
+    {
+      "alan": "Matematik ve Temel Bilimler",
+      "yuzde": 5
+    },
+    {
+      "alan": "Mühendislik Tasarımı",
+      "yuzde": 15
+    },
+    {
+      "alan": "Sosyal Bilimler",
+      "yuzde": 5
+    },
+    {
+      "alan": "Alan Bilgisi",
+      "yuzde": 75
+    }
+  ],
+  "ciktilar": [
+    {
+      "kod": "Ö1",
+      "tur": "Beceri",
+      "tr": "Web’in çalışma mantığını, istemci-sunucu modelini ve HTTP/HTTPS protokolünü açıklar.",
+      "en": "Explains how the web works, the client-server model and the HTTP/HTTPS protocol."
+    },
+    {
+      "kod": "Ö2",
+      "tur": "Beceri",
+      "tr": "HTML5 semantik etiketlerini kullanarak anlamlı ve erişilebilir bir sayfa yapısı tasarlar.",
+      "en": "Designs a meaningful and accessible page structure using HTML5 semantic tags."
+    },
+    {
+      "kod": "Ö3",
+      "tur": "Beceri",
+      "tr": "CSS3 ile sayfa öğelerine stil uygular ve kutu modeli ilkelerini yorumlar.",
+      "en": "Applies styles to page elements with CSS3 and interprets box model principles."
+    },
+    {
+      "kod": "Ö4",
+      "tur": "Beceri",
+      "tr": "Flexbox ve Grid düzenlerini kullanarak farklı ekranlara duyarlı tasarımlar geliştirir.",
+      "en": "Develops responsive designs using Flexbox and Grid layouts."
+    },
+    {
+      "kod": "Ö5",
+      "tur": "Bilgi",
+      "tr": "JavaScript temel programlama yapılarını (değişken, döngü, fonksiyon) uygular.",
+      "en": "Applies basic JavaScript programming constructs (variables, loops, functions)."
+    },
+    {
+      "kod": "Ö6",
+      "tur": "Beceri",
+      "tr": "Belge nesne modeli ve olay yönetimiyle etkileşimli sayfalar geliştirir.",
+      "en": "Develops interactive pages with the document object model and event handling."
+    },
+    {
+      "kod": "Ö7",
+      "tur": "Beceri",
+      "tr": "Web formlarını tasarlar ve istemci tarafında veri doğrulama uygular.",
+      "en": "Designs web forms and applies client-side data validation."
+    },
+    {
+      "kod": "Ö8",
+      "tur": "Bilgi",
+      "tr": "Temel web güvenliği risklerini (XSS, CSRF) tanımlar ve güvenli form gönderimi ilkelerini değerlendirir.",
+      "en": "Identifies basic web security risks (XSS, CSRF) and evaluates secure form submission principles."
+    },
+    {
+      "kod": "Ö9",
+      "tur": "Beceri",
+      "tr": "Fetch kullanarak basit bir servisle veri alışverişi gerçekleştirir.",
+      "en": "Exchanges data with a simple service using fetch."
+    },
+    {
+      "kod": "Ö10",
+      "tur": "Beceri",
+      "tr": "Bir web arayüzünün farklı ekran boyutlarında tutarlılığını test eder ve karşılaştırır.",
+      "en": "Tests and compares the consistency of a web interface across screen sizes."
+    },
+    {
+      "kod": "Ö11",
+      "tur": "Beceri",
+      "tr": "Erişilebilirlik ilkelerini web tasarımına uygular.",
+      "en": "Applies accessibility principles to web design."
+    },
+    {
+      "kod": "Ö12",
+      "tur": "Yetkinlik",
+      "tr": "HTML5, CSS3 ve JavaScript’i bütünleşik biçimde kullanarak bir web projesi geliştirir ve sonuçlarını raporlayarak sunar.",
+      "en": "Develops a web project using HTML5, CSS3 and JavaScript together and presents its results in a report."
+    }
+  ],
+  "haftalar": [
+    {
+      "hafta": 1,
+      "konu": {
+        "tr": "Web’e giriş: internetin çalışma mantığı, istemci-sunucu mimarisi, HTTP ve HTTPS protokolleri, geliştirme ortamının kurulumu",
+        "en": "Introduction to the web: how the internet works, client-server architecture, HTTP and HTTPS, setting up the development environment"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 2,
+      "konu": {
+        "tr": "HTML5 temelleri: belge yapısı, semantik etiketler, bağlantılar, listeler, tablolar ve temel form elemanlarının tanıtımı",
+        "en": "HTML5 basics: document structure, semantic tags, links, lists, tables and an introduction to basic form elements"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 3,
+      "konu": {
+        "tr": "CSS3 temel stil: seçiciler, kalıtım ve öncelik, kutu modeli, renk ve tipografi özellikleriyle sayfa biçimlendirme",
+        "en": "CSS3 basic styling: selectors, inheritance and specificity, box model, colour and typography for page formatting"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 4,
+      "konu": {
+        "tr": "Farklı ekranlara duyarlı tasarım I: Flexbox modeli ile esnek düzenler, hizalama ve boyutlandırma teknikleri",
+        "en": "Responsive design I: flexible layouts with Flexbox, alignment and sizing techniques"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 5,
+      "konu": {
+        "tr": "Farklı ekranlara duyarlı tasarım II: CSS Grid ile çok sütunlu düzenler ve medya sorgularıyla mobil öncelikli tasarım",
+        "en": "Responsive design II: multi-column layouts with CSS Grid and mobile-first design with media queries"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 6,
+      "konu": {
+        "tr": "JavaScript temelleri I: değişkenler, veri türleri, operatörler, koşul yapıları ve döngülerle küçük programlar yazma",
+        "en": "JavaScript basics I: writing small programs with variables, data types, operators, conditionals and loops"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 7,
+      "konu": {
+        "tr": "JavaScript temelleri II: fonksiyonlar, diziler ve nesnelerle temel veri işleme uygulamaları ve kod düzeni",
+        "en": "JavaScript basics II: basic data processing with functions, arrays and objects, and code organisation"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 8,
+      "konu": {
+        "tr": "Ara Sınav: web mimarisi, HTML5, CSS3 ve JavaScript temel konularını kapsayan yazılı ve uygulamalı sınav",
+        "en": "Midterm exam: written and practical exam covering web architecture, HTML5, CSS3 and JavaScript basics"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 9,
+      "konu": {
+        "tr": "Belge nesne modeli ve olay yönetimi: eleman seçme, dinamik değiştirme ve olay dinleyicileriyle kullanıcı etkileşimi",
+        "en": "Document object model and events: selecting elements, changing them dynamically and user interaction with event listeners"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 10,
+      "konu": {
+        "tr": "Form tasarımı ve istemci tarafı doğrulama: HTML5 doğrulama öznitelikleri ve JavaScript ile özel doğrulama fonksiyonları",
+        "en": "Form design and client-side validation: HTML5 validation attributes and custom validation functions in JavaScript"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 11,
+      "konu": {
+        "tr": "Web güvenliği farkındalığı: siteler arası betik çalıştırma ve istek sahteciliği riskleri, güvenli form gönderimi ilkeleri",
+        "en": "Web security awareness: cross-site scripting and request forgery risks, principles of secure form submission"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 12,
+      "konu": {
+        "tr": "Fetch ile veri alışverişi: basit bir servisten veri çekme, gelen veriyi sayfada listeleme ve hata durumlarını yönetme",
+        "en": "Data exchange with fetch: fetching data from a simple service, listing it on the page and handling errors"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 13,
+      "konu": {
+        "tr": "Erişilebilirlik ve test: ekran okuyucu uyumu, renk karşıtlığı, farklı cihazlarda tutarlılık testi ve geliştirici araçları",
+        "en": "Accessibility and testing: screen reader compatibility, colour contrast, consistency tests across devices and developer tools"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    },
+    {
+      "hafta": 14,
+      "konu": {
+        "tr": "Proje sunumları ve Yarıyıl Sonu Sınavı hazırlığı: dönem projelerinin sunulması, değerlendirilmesi ve genel tekrar",
+        "en": "Project presentations and final exam preparation: presenting and assessing term projects and general review"
+      },
+      "onHazirlik": "Haftalık konu notlarını ve MDN Web Docs’taki ilgili bölümü okuyunuz.",
+      "dokuman": "https://aybuzem.aybu.edu.tr/"
+    }
+  ],
+  "kaynaklar": [
+    {
+      "yazar": "David Flanagan",
+      "eser": "JavaScript: The Definitive Guide",
+      "yayin": "O’Reilly"
+    },
+    {
+      "yazar": "Jon Duckett",
+      "eser": "HTML and CSS: Design and Build Websites",
+      "yayin": "Wiley"
+    }
+  ],
+  "programCiktilari": [
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "P7",
+    "P8",
+    "P9",
+    "P10",
+    "P11"
+  ],
+  "katki": {
+    "Ö1": {
+      "P1": 3,
+      "P2": 1,
+      "P3": 4,
+      "P4": null,
+      "P5": null,
+      "P6": null,
+      "P7": 3,
+      "P8": null,
+      "P9": 2,
+      "P10": null,
+      "P11": null
+    },
+    "Ö2": {
+      "P1": 3,
+      "P2": 3,
+      "P3": 3,
+      "P4": 2,
+      "P5": null,
+      "P6": 3,
+      "P7": null,
+      "P8": null,
+      "P9": 2,
+      "P10": null,
+      "P11": 3
+    },
+    "Ö3": {
+      "P1": null,
+      "P2": 2,
+      "P3": 4,
+      "P4": 1,
+      "P5": 2,
+      "P6": 3,
+      "P7": 1,
+      "P8": null,
+      "P9": 2,
+      "P10": 1,
+      "P11": null
+    },
+    "Ö4": {
+      "P1": 2,
+      "P2": 3,
+      "P3": 3,
+      "P4": null,
+      "P5": null,
+      "P6": 2,
+      "P7": 4,
+      "P8": 3,
+      "P9": 3,
+      "P10": 4,
+      "P11": 4
+    },
+    "Ö5": {
+      "P1": 3,
+      "P2": 2,
+      "P3": 4,
+      "P4": 1,
+      "P5": 2,
+      "P6": null,
+      "P7": 2,
+      "P8": 4,
+      "P9": 3,
+      "P10": 4,
+      "P11": 2
+    },
+    "Ö6": {
+      "P1": null,
+      "P2": null,
+      "P3": 3,
+      "P4": 1,
+      "P5": 3,
+      "P6": 1,
+      "P7": 4,
+      "P8": 3,
+      "P9": null,
+      "P10": null,
+      "P11": 3
+    },
+    "Ö7": {
+      "P1": 3,
+      "P2": 3,
+      "P3": 4,
+      "P4": 4,
+      "P5": null,
+      "P6": null,
+      "P7": 2,
+      "P8": 4,
+      "P9": null,
+      "P10": null,
+      "P11": 2
+    },
+    "Ö8": {
+      "P1": 4,
+      "P2": 2,
+      "P3": 3,
+      "P4": 3,
+      "P5": null,
+      "P6": 4,
+      "P7": 3,
+      "P8": 1,
+      "P9": null,
+      "P10": 4,
+      "P11": null
+    },
+    "Ö9": {
+      "P1": 2,
+      "P2": 2,
+      "P3": 4,
+      "P4": 2,
+      "P5": 3,
+      "P6": 3,
+      "P7": 4,
+      "P8": null,
+      "P9": 1,
+      "P10": 4,
+      "P11": 3
+    },
+    "Ö10": {
+      "P1": 2,
+      "P2": 1,
+      "P3": 3,
+      "P4": 2,
+      "P5": 3,
+      "P6": 3,
+      "P7": 3,
+      "P8": 2,
+      "P9": 1,
+      "P10": null,
+      "P11": 1
+    },
+    "Ö11": {
+      "P1": 1,
+      "P2": 2,
+      "P3": 4,
+      "P4": null,
+      "P5": 4,
+      "P6": 1,
+      "P7": 2,
+      "P8": 2,
+      "P9": null,
+      "P10": 1,
+      "P11": 3
+    },
+    "Ö12": {
+      "P1": 3,
+      "P2": 3,
+      "P3": 3,
+      "P4": null,
+      "P5": 4,
+      "P6": 3,
+      "P7": 3,
+      "P8": 3,
+      "P9": 3,
+      "P10": null,
+      "P11": 4
+    }
+  },
+  "ska": [
+    4,
+    9
+  ],
+  "yetkililer": [
+    {
+      "rol": "Ders Koordinatörü",
+      "ad": "Öğr.Gör. Ad Soyad",
+      "avesis": "https://avesis.uni.edu.tr/adsoyad",
+      "eposta": "ad.soyad@uni.edu.tr"
+    },
+    {
+      "rol": "Dersi Veren",
+      "ad": "Öğr.Gör. Ad Soyad",
+      "avesis": "https://avesis.uni.edu.tr/adsoyad",
+      "eposta": "ad.soyad@uni.edu.tr"
+    }
+  ]
+}

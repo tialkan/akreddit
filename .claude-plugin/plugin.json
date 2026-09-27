@@ -1,0 +1,12 @@
+{
+  "name": "akreddit",
+  "version": "1.0.0",
+  "description": "Kalite komisyonları için akreditasyon hazırlığını kaynaklı, kayıtlı ve onaylı yürüten açık kaynak iş akışı.",
+  "author": {
+    "name": "Tarık İsmet ALKAN",
+    "url": "https://kulular.com.tr/ekip/tarik-ismet-alkan"
+  },
+  "homepage": "https://github.com/tialkan/akreddit",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/tialkan/akreddit"
+}

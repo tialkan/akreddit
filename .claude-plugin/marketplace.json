@@ -1,0 +1,15 @@
+{
+  "name": "akreddit",
+  "description": "Akreddit: akreditasyon hazırlığı için açık kaynak iş akışı.",
+  "owner": {
+    "name": "Tarık İsmet ALKAN",
+    "url": "https://kulular.com.tr"
+  },
+  "plugins": [
+    {
+      "name": "akreddit",
+      "source": "./",
+      "description": "Kalite komisyonları için akreditasyon hazırlığını kaynaklı, kayıtlı ve onaylı yürüten açık kaynak iş akışı."
+    }
+  ]
+}
